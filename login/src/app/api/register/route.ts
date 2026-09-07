@@ -1,11 +1,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { registerUser } from '@/lib/auth';
+import { registerUser } from '@/lib/auth'; // 确保这里能正确导入
 import { z } from 'zod';
 
 const registerSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  email: z.string().email(),
+  password: z.string().min(6),
+  name: z.string().min(1),
 });
 
 export async function POST(req: NextRequest) {
@@ -13,46 +14,25 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const validation = registerSchema.safeParse(body);
 
+    if (!validation.success) {
+      return NextResponse.json(
+        { success: false, message: validation.error.errors.message },
+        { status: 400 }
+      );
+    }
 
+    const { email, password, name } = validation.data;
 
-
-   if (!validation.success) {
-  // flatten() 将错误转换为 { formErrors: string[], fieldErrors: Record<string, string[]> }
-  const flattened = validation.error.flatten();
-
-  // 优先取字段错误中的第一条，如果没有则取全局错误
-  const firstFieldError = Object.values(flattened.fieldErrors).flat();
-  const errorMessage = firstFieldError || flattened.formErrors || 'Validation failed';
-
-  return NextResponse.json(
-    {
-      success: false,
-      message: errorMessage
-    },
-    { status: 400 }
-  );
-}
-
-
-
-
-    const { email, password } = validation.data;
-    const result = await registerUser(email, password);
+    // 调用导出的 registerUser
+    const result = await registerUser(email, password, name);
 
     if (result.success) {
-      const response = NextResponse.json({ success: true, message: result.message });
-      response.cookies.set('token', result.token!, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7,
-        path: '/',
-      });
-      return response;
+      return NextResponse.json({ success: true, message: result.message }, { status: 201 });
     } else {
       return NextResponse.json({ success: false, message: result.message }, { status: 400 });
     }
   } catch (error) {
+    console.error('Register API error:', error);
     return NextResponse.json({ success: false, message: 'Internal server error' }, { status: 500 });
   }
 }
