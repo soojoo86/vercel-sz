@@ -80,8 +80,21 @@ export async function loginUser(email: string, password: string): Promise<{ succ
       return { success: false, message: 'Invalid credentials' };
     }
 
-    const user = result.rows;
-    const isValid = await verifyPassword(password, user.password_hash as string);
+
+
+// ✅ 正确：获取数组第一个元素
+const user = result.rows;
+
+// 增加空值检查，防止用户不存在时报错
+if (!user) {
+  return { success: false, message: 'Invalid credentials' };
+}
+
+const isValid = await verifyPassword(password, user.password_hash as string);
+
+
+
+
 
     if (!isValid) {
       return { success: false, message: 'Invalid credentials' };
