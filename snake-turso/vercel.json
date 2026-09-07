@@ -1,0 +1,14 @@
+{
+  "buildCommand": "vite build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install",
+  "functions": {
+    "api/*.js": {
+      "runtime": "vercel-edge"
+    }
+  },
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
