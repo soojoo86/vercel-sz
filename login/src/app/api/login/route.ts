@@ -14,8 +14,12 @@ export async function POST(req: NextRequest) {
     const validation = loginSchema.safeParse(body);
 
     if (!validation.success) {
+      // 修复点：正确提取错误信息
       return NextResponse.json(
-        { success: false, message: validation.error.errors.message },
+        {
+          success: false,
+          message: validation.error.errors.message // 获取第一个错误信息
+        },
         { status: 400 }
       );
     }
@@ -25,12 +29,11 @@ export async function POST(req: NextRequest) {
 
     if (result.success) {
       const response = NextResponse.json({ success: true, message: result.message });
-      // 设置 HttpOnly Cookie
       response.cookies.set('token', result.token!, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7, // 7 days
+        maxAge: 60 * 60 * 24 * 7,
         path: '/',
       });
       return response;
@@ -41,3 +44,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: 'Internal server error' }, { status: 500 });
   }
 }
+

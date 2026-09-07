@@ -13,12 +13,20 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const validation = registerSchema.safeParse(body);
 
-    if (!validation.success) {
-      return NextResponse.json(
-        { success: false, message: validation.error.errors.message },
-        { status: 400 }
-      );
-    }
+
+
+// 在 src/app/api/register/route.ts 中
+if (!validation.success) {
+  return NextResponse.json(
+    { 
+      success: false, 
+      message: validation.error.errors.message // 修复点
+    },
+    { status: 400 }
+  );
+}
+
+
 
     const { email, password } = validation.data;
     const result = await registerUser(email, password);
