@@ -1,5 +1,5 @@
 
-import { pool } from './db';
+import { db } from './db';
 import { compare } from 'bcryptjs';
 
 // 定义用户接口
