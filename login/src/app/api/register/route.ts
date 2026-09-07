@@ -14,12 +14,20 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const validation = registerSchema.safeParse(body);
 
-    if (!validation.success) {
-      return NextResponse.json(
-        { success: false, message: validation.error.errors.message },
-        { status: 400 }
-      );
-    }
+if (!validation.success) {
+  // ✅ 修复：返回所有错误详情
+  return NextResponse.json(
+    { 
+      success: false, 
+      message: 'Validation failed',
+      errors: validation.error.errors.map(err => ({
+        path: err.path.join('.'), // 例如 "email" 或 "password"
+        message: err.message
+      }))
+    },
+    { status: 400 }
+  );
+}
 
     const { email, password, name } = validation.data;
 
