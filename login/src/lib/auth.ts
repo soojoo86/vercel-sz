@@ -1,13 +1,14 @@
 
+// src/lib/auth.ts
+
 import { db } from './db';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-// 1. 定义统一的返回类型接口，解决 TypeScript 联合类型推断问题
 interface AuthResponse {
   success: boolean;
   message: string;
-  token?: string; // token 是可选的，只在登录成功时存在
+  token?: string;
   user?: {
     id: number;
     email: string;
@@ -15,10 +16,15 @@ interface AuthResponse {
   };
 }
 
-// 2. 导出 registerUser 函数
+interface DbUser {
+  id: number;
+  email: string;
+  password_hash: string;
+  name?: string;
+}
+
 export async function registerUser(email: string, password: string, name: string): Promise<AuthResponse> {
   try {
-    // 检查用户是否已存在
     const existing = await db.execute({
       sql: 'SELECT * FROM users WHERE email = ?',
       args: [email],
@@ -28,10 +34,8 @@ export async function registerUser(email: string, password: string, name: string
       return { success: false, message: 'User already exists' };
     }
 
-    // 哈希密码
     const password_hash = await bcrypt.hash(password, 10);
 
-    // 插入用户
     await db.execute({
       sql: 'INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)',
       args: [email, password_hash, name],
@@ -44,24 +48,27 @@ export async function registerUser(email: string, password: string, name: string
   }
 }
 
-// 3. 导出 loginUser 函数
 export async function loginUser(email: string, password: string): Promise<AuthResponse> {
   try {
+    // 1. 执行查询
     const result = await db.execute({
       sql: 'SELECT * FROM users WHERE email = ?',
       args: [email],
     });
 
-
-// 先从 rows 数组中取出第一个匹配用户，再安全转换类型
-const user = (result.rows as unknown) as 
-  | { id: number; email: string; password_hash: string; name?: string }
-  | undefined;
-
-
-
-    if (!user) {
+    // 2. 【关键修复】先检查数组长度，再取第一个元素
+    if (result.rows.length === 0) {
       return { success: false, message: 'Invalid credentials' };
+    }
+
+    // 3. 安全地获取第一个用户对象并转换类型
+    // 此时 rows 肯定存在，我们将其断言为 DbUser
+    const user = result.rows as unknown as DbUser;
+
+    // 4. 验证密码
+    // 注意：确保 user.password_hash 存在，防止数据库字段为空导致 bcrypt 报错
+    if (!user.password_hash) {
+       return { success: false, message: 'Invalid credentials' };
     }
 
     const isValid = await bcrypt.compare(password, user.password_hash);
@@ -70,14 +77,19 @@ const user = (result.rows as unknown) as
       return { success: false, message: 'Invalid credentials' };
     }
 
-    // 生成 JWT Token
+    // 5. 生成 Token
+    // 建议在生产环境中确保 JWT_SECRET 已设置，否则使用 fallback 会有安全风险
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      console.warn('JWT_SECRET is not set, using fallback. This is insecure for production.');
+    }
+
     const token = jwt.sign(
       { id: user.id, email: user.email },
-      process.env.JWT_SECRET || 'fallback_secret',
+      secret || 'fallback_secret_do_not_use_in_prod',
       { expiresIn: '7d' }
     );
 
-    // 【关键】成功时明确返回 token
     return {
       success: true,
       message: 'Login successful',
@@ -94,10 +106,10 @@ const user = (result.rows as unknown) as
   }
 }
 
-// 4. 导出 verifyToken 函数 (供 middleware 或 /me 接口使用)
 export function verifyToken(token: string) {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+    const secret = process.env.JWT_SECRET || 'fallback_secret_do_not_use_in_prod';
+    const decoded = jwt.verify(token, secret);
     return { success: true, data: decoded };
   } catch (error) {
     return { success: false, message: 'Invalid token' };
