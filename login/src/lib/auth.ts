@@ -52,7 +52,13 @@ export async function loginUser(email: string, password: string): Promise<AuthRe
       args: [email],
     });
 
-    const user = result.rows as { id: number; email: string; password_hash: string; name?: string } | undefined;
+
+// 先从 rows 数组中取出第一个匹配用户，再安全转换类型
+const user = (result.rows as unknown) as 
+  | { id: number; email: string; password_hash: string; name?: string }
+  | undefined;
+
+
 
     if (!user) {
       return { success: false, message: 'Invalid credentials' };
