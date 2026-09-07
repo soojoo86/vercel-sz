@@ -1,12 +1,12 @@
 <template>
-  <div style="margin‑top:20px;border:1px solid #aaa;padding:16px;border‑radius:8px">
+  <div style="margin-top:20px;border:1px solid #aaa;padding:16px;border-radius:8px">
     <h3>🏆积分排行榜Top10</h3>
-    <ul v‑if="list.length>0">
-      <li v‑for="(item,i) in list" :key="i">
+    <ul v-if="list.length>0">
+      <li v-for="(item,i) in list" :key="i">
         {{i+1}}. {{item.username}} —— 最高分：{{item.high_score}}
       </li>
     </ul>
-    <div v‑else>暂无排行榜数据</div>
+    <div v-else>暂无排行榜数据</div>
     <button @click="fetchRank">刷新排行榜</button>
   </div>
 </template>

@@ -2,7 +2,7 @@ import { createClient } from '@libsql/client/web';
 import jwt from 'jsonwebtoken';
 import { parse } from 'cookie';
 
-export const config = { runtime:'edge' };
+//export const config = { runtime:'edge' };
 export default async function handler(req){
   if(req.method!=='GET') return new Response('',{status:405});
   const cookies = parse(req.headers.get('cookie')||'');

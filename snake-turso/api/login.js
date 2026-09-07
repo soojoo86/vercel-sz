@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { serialize } from 'cookie';
 
-export const config = { runtime: 'edge' };
+//export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
   if(req.method!=='POST') return new Response('',{status:405});

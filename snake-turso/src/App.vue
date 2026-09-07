@@ -1,12 +1,12 @@
 <template>
-  <div style="max‑width:900px;margin:20px auto;padding:0 16px">
+  <div style="max-width:900px;margin:20px auto;padding:0 16px">
     <h1>🐍贪吃蛇游戏（Turso积分排行榜）</h1>
-    <div v‑if="!user">
-      <LoginRegister @login‑success="onLogin"/>
+    <div v-if="!user">
+      <LoginRegister @login-success="onLogin"/>
     </div>
-    <div v‑else>
+    <div v-else>
       <p>欢迎 {{user.username}}｜你的最高分：{{user.high_score}}</p>
-      <SnakeGame @game‑over="onGameOver"/>
+      <SnakeGame @game-over="onGameOver"/>
       <RankBoard />
     </div>
   </div>
@@ -32,9 +32,9 @@ function onLogin(u){
 }
 
 async function onGameOver(score){
-  await fetch('/api/submit‑score',{
+  await fetch('/api/submit-score',{
     method:'POST',
-    headers:{'Content‑Type':'application/json'},
+    headers:{'Content-Type':'application/json'},
     body:JSON.stringify({score})
   })
   const r = await fetch('/api/me')

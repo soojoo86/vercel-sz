@@ -8,7 +8,7 @@
 
 <script setup>
 import { ref, onMounted, defineEmits } from 'vue'
-const emit = defineEmits(['game‑over'])
+const emit = defineEmits(['game-over'])
 const canvasRef = ref(null)
 const score = ref(0)
 
@@ -39,9 +39,9 @@ function draw(){
   const ctx = canvas.getContext('2d')
   ctx.clearRect(0,0,canvas.width,canvas.height)
   ctx.fillStyle="#27ae60"
-  snake.forEach(p=>ctx.fillRect(p.x*CELL,p.y*CELL,CELL‑1,CELL‑1))
+  snake.forEach(p=>ctx.fillRect(p.x*CELL,p.y*CELL,CELL-1,CELL-1))
   ctx.fillStyle="#e74c3c"
-  ctx.fillRect(food.x*CELL,food.y*CELL,CELL‑1,CELL‑1)
+  ctx.fillRect(food.x*CELL,food.y*CELL,CELL-1,CELL-1)
 }
 
 function tick(){
@@ -71,7 +71,7 @@ function tick(){
 function endGame(){
   gameOverFlag=true
   clearInterval(gameLoop)
-  emit('game‑over', score.value)
+  emit('game-over', score.value)
 }
 
 function keyDown(e){
@@ -82,10 +82,10 @@ function keyDown(e){
     return
   }
   switch(e.key){
-    case 'ArrowUp': if(dir.dy!==1) nextDir={dx:0,dy:‑1};break;
-    case 'ArrowDown': if(dir.dy!==‑1) nextDir={dx:0,dy:1};break;
-    case 'ArrowLeft': if(dir.dx!==1) nextDir={dx:‑1,dy:0};break;
-    case 'ArrowRight': if(dir.dx!==‑1) nextDir={dx:1,dy:0};break;
+    case 'ArrowUp': if(dir.dy!==1) nextDir={dx:0,dy:-1};break;
+    case 'ArrowDown': if(dir.dy!==-1) nextDir={dx:0,dy:1};break;
+    case 'ArrowLeft': if(dir.dx!==1) nextDir={dx:-1,dy:0};break;
+    case 'ArrowRight': if(dir.dx!==-1) nextDir={dx:1,dy:0};break;
   }
 }
 
