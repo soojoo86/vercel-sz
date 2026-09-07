@@ -18,7 +18,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: validation.error.errors.message // 获取第一个错误信息
+          // 获取第一个字段的第一个错误信息
+          message: validation.error.errors?.message || 'Invalid input data'
         },
         { status: 400 }
       );

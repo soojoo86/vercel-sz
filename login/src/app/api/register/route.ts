@@ -13,32 +13,27 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const validation = registerSchema.safeParse(body);
 
-
-
-// 在 src/app/api/register/route.ts 中
-if (!validation.success) {
-  return NextResponse.json(
-    { 
-      success: false, 
-      message: validation.error.errors.message // 修复点
-    },
-    { status: 400 }
-  );
-}
-
-
+    if (!validation.success) {
+      // 修复点：正确提取错误信息
+      return NextResponse.json(
+        {
+          success: false,
+          message: validation.error.errors?.message || 'Invalid input data'
+        },
+        { status: 400 }
+      );
+    }
 
     const { email, password } = validation.data;
     const result = await registerUser(email, password);
 
     if (result.success) {
       const response = NextResponse.json({ success: true, message: result.message });
-      // 设置 HttpOnly Cookie
       response.cookies.set('token', result.token!, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7, // 7 days
+        maxAge: 60 * 60 * 24 * 7,
         path: '/',
       });
       return response;
@@ -49,3 +44,4 @@ if (!validation.success) {
     return NextResponse.json({ success: false, message: 'Internal server error' }, { status: 500 });
   }
 }
+
