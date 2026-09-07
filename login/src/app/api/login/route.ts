@@ -15,12 +15,13 @@ export async function POST(req: NextRequest) {
 
 
 
-
 if (!validation.success) {
-  // 1. 获取第一个错误对象
-  const firstError = validation.error.errors;
-  // 2. 安全地提取 message，如果不存在则给默认值
-  const errorMessage = firstError ? firstError.message : 'Validation failed';
+  // flatten() 将错误转换为 { formErrors: string[], fieldErrors: Record<string, string[]> }
+  const flattened = validation.error.flatten();
+  
+  // 优先取字段错误中的第一条，如果没有则取全局错误
+  const firstFieldError = Object.values(flattened.fieldErrors).flat();
+  const errorMessage = firstFieldError || flattened.formErrors || 'Validation failed';
 
   return NextResponse.json(
     { 
@@ -30,6 +31,7 @@ if (!validation.success) {
     { status: 400 }
   );
 }
+
 
 
     const { email, password } = validation.data;
