@@ -12,7 +12,7 @@ interface AuthResponse {
   user?: {
     id: number;
     email: string;
-    name?: string;
+    //name?: string;
   };
 }
 
@@ -20,10 +20,11 @@ interface DbUser {
   id: number;
   email: string;
   password_hash: string;
-  name?: string;
+  //name?: string;
 }
 
-export async function registerUser(email: string, password: string, name: string): Promise<AuthResponse> {
+export async function registerUser(email: string, password: string): Promise<AuthResponse> {
+//export async function registerUser(email: string, password: string, name: string): Promise<AuthResponse> {
   try {
     const existing = await db.execute({
       sql: 'SELECT * FROM users WHERE email = ?',
@@ -37,8 +38,10 @@ export async function registerUser(email: string, password: string, name: string
     const password_hash = await bcrypt.hash(password, 10);
 
     await db.execute({
-      sql: 'INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)',
-      args: [email, password_hash, name],
+      sql: 'INSERT INTO users (email, password_hash) VALUES (?,  ?)',
+      //sql: 'INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)',
+      args: [email, password_hash],
+      //args: [email, password_hash, name],
     });
 
     return { success: true, message: 'Registration successful' };
@@ -97,7 +100,7 @@ export async function loginUser(email: string, password: string): Promise<AuthRe
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
+        //name: user.name,
       }
     };
   } catch (error) {
