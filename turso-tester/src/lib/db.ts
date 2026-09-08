@@ -133,7 +133,8 @@ export async function testTursoConnection() {
       },
       latency: `${latency}ms`,
       databaseInfo: {
-        sqliteVersion: (result.rows as any[])?.version as string || 'unknown',
+        // ✅ 正确：先通过[0]取数组第一个元素，再访问version属性
+	sqliteVersion: ((result.rows as any[])?.[0] as any)?.version as string || 'unknown',
         tables: tables.length > 0 ? tables : ['数据库中暂无表'],
         clientVersion: clientVersion,
         nodeVersion: nodeVersion
