@@ -105,7 +105,7 @@ export async function testTursoConnection(): Promise<ConnectionTestResult> {
       },
       latency: `${latency}ms`,
       databaseInfo: {
-        sqliteVersion: result.rows?.version as string,
+        sqliteVersion: result.rows?.[0]?.version as string,
         tables: tables.length > 0 ? tables : ['数据库中暂无表']
       }
     };
