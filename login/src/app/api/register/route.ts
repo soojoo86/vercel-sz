@@ -5,7 +5,7 @@ import { registerUser } from '@/lib/auth';
 
 // 定义与前端一致的校验 Schema
 const registerSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
+ // name: z.string().min(1, 'Name is required'),
   email: z.string().email('Invalid email format'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
@@ -33,8 +33,10 @@ export async function POST(req: Request) {
     }
 
     // 3. 校验通过，执行注册逻辑
-    const { name, email, password } = result.data;
-    const response = await registerUser(email, password, name);
+    const {  email, password } = result.data;
+    // const { name, email, password } = result.data;
+    const response = await registerUser(email, password);
+    // const response = await registerUser(email, password, name);
 
     if (!response.success) {
       return NextResponse.json(response, { status: 400 });
