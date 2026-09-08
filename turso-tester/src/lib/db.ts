@@ -40,7 +40,7 @@ function getClientVersion(): string {
 }
 
 // ✅ 修复点：Promise 必须带上泛型参数 Promise
-export async function testTursoConnection(): Promise {
+export async function testTursoConnection() {
   const databaseUrl = process.env.TURSO_DATABASE_URL;
   const authToken = process.env.TURSO_AUTH_TOKEN;
   const clientVersion = getClientVersion();
