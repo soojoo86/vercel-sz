@@ -38,7 +38,7 @@ export async function registerUser(email: string, password: string): Promise<Aut
     const password_hash = await bcrypt.hash(password, 10);
 
     await db.execute({
-      sql: 'INSERT INTO users (email, password_hash) VALUES (?,  ?)',
+      sql: 'INSERT INTO users (email, password_hash) VALUES (?, ?)',
       //sql: 'INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)',
       args: [email, password_hash],
       //args: [email, password_hash, name],
@@ -47,7 +47,7 @@ export async function registerUser(email: string, password: string): Promise<Aut
     return { success: true, message: 'Registration successful' };
   } catch (error) {
     console.error('Register error:', error);
-    return { success: false, message: 'Internal server error' };
+    return { success: false, message: 'Internal server error-register' };
   }
 }
 
@@ -105,7 +105,7 @@ export async function loginUser(email: string, password: string): Promise<AuthRe
     };
   } catch (error) {
     console.error('Login error:', error);
-    return { success: false, message: 'Internal server error' };
+    return { success: false, message: 'Internal server error2' };
   }
 }
 
