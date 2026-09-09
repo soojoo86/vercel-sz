@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -13,6 +13,14 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [registrationOpen, setRegistrationOpen] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/settings/registration')
+      .then((res) => res.json())
+      .then((data) => setRegistrationOpen(data.enabled !== false))
+      .catch(() => setRegistrationOpen(true));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,12 +88,18 @@ function LoginForm() {
           </button>
         </form>
 
-        <p className="text-center mt-4 text-gray-400">
-          还没有账号？{' '}
-          <Link href="/register" className="text-green-400 hover:underline">
-            立即注册
-          </Link>
-        </p>
+        {registrationOpen ? (
+          <p className="text-center mt-4 text-gray-400">
+            还没有账号？{' '}
+            <Link href="/register" className="text-green-400 hover:underline">
+              立即注册
+            </Link>
+          </p>
+        ) : (
+          <p className="text-center mt-4 text-gray-500 text-sm">
+            当前未开放注册，如需账号请联系管理员
+          </p>
+        )}
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { getDb } from '@/lib/db';
 import { randomUUID } from 'crypto';
+import { isRegistrationEnabled } from '@/lib/settings';
 
 const registerSchema = z.object({
   email: z
@@ -20,6 +21,14 @@ const registerSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    // 注册通道被 admin 关闭时，直接拒绝（前后端双重校验）
+    if (!(await isRegistrationEnabled())) {
+      return NextResponse.json(
+        { error: '注册通道已关闭，请联系管理员' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const validated = registerSchema.safeParse(body);
 

@@ -146,18 +146,30 @@ export async function checkGameAccess(userId: string): Promise<GameAccessResult>
   };
 }
 
+export interface PointsBreakdownItem {
+  label: string;
+  points: number;
+}
+
+export interface PlayResult {
+  pointsEarned: number;
+  breakdown: PointsBreakdownItem[];
+}
+
 /**
- * 记录游戏分数并消耗次数：
+ * 记录游戏分数、消耗次数并结算积分：
  * - 每天第一次免费；后续每次消耗一个答题机会（credits - 1）
- * - 通过事务保证"校验 + 扣减 + 记录"的原子性
+ * - 积分 = 本局得分 + 每日首局奖 + 连续游玩奖 + 破纪录奖 + 通关奖
+ * - 通过事务保证"校验 + 扣减 + 记录 + 积分"的原子性
  */
 export async function consumePlayAndRecordScore(
   userId: string,
   score: number
-): Promise<void> {
+): Promise<PlayResult> {
   await ensureSchema();
   const db = getDb();
   const today = getTodayDateString();
+  const yesterday = getTodayDateString(Date.now() - DAY_MS);
   const nowSec = Math.floor(Date.now() / 1000);
 
   const tx = await db.transaction();
@@ -183,46 +195,79 @@ export async function consumePlayAndRecordScore(
       }
     }
 
+    // ---- 积分结算 ----
+    const highRow = await tx.execute({
+      sql: 'SELECT MAX(score) AS high_score FROM game_sessions WHERE user_id = ?',
+      args: [userId],
+    });
+    const previousHigh = Number(highRow.rows[0]?.high_score) || 0;
+
+    const pointsRow = await tx.execute({
+      sql: 'SELECT streak, last_play_date FROM user_points WHERE user_id = ?',
+      args: [userId],
+    });
+    const p = pointsRow.rows[0];
+    let streak = 1;
+    let isNewStreakDay = true;
+    if (p) {
+      const last = p.last_play_date as string | null;
+      if (last === today) {
+        streak = Number(p.streak) || 1;
+        isNewStreakDay = false;
+      } else if (last === yesterday) {
+        streak = (Number(p.streak) || 0) + 1;
+      }
+    }
+
+    const breakdown: PointsBreakdownItem[] = [
+      { label: '本局得分', points: score },
+    ];
+    if (playCount === 0) {
+      breakdown.push({ label: '每日首局奖励', points: 10 });
+    }
+    if (isNewStreakDay) {
+      const streakBonus = 5 * Math.min(streak, 10);
+      breakdown.push({
+        label: `连续游玩第 ${streak} 天`,
+        points: streakBonus,
+      });
+    }
+    if (score > previousHigh && score > 0) {
+      breakdown.push({ label: '刷新纪录奖励', points: 50 });
+    }
+    if (score >= 3990) {
+      breakdown.push({ label: '通关奖励', points: 200 });
+    }
+
+    const pointsEarned = breakdown.reduce((sum, item) => sum + item.points, 0);
+
+    await tx.execute({
+      sql: `INSERT INTO user_points (user_id, total_points, streak, last_play_date)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+              total_points = total_points + excluded.total_points,
+              streak = excluded.streak,
+              last_play_date = excluded.last_play_date,
+              updated_at = datetime('now')`,
+      args: [userId, pointsEarned, streak, today],
+    });
+
+    await tx.execute({
+      sql: 'INSERT INTO point_transactions (user_id, points, reason, detail) VALUES (?, ?, ?, ?)',
+      args: [userId, pointsEarned, 'game', JSON.stringify(breakdown)],
+    });
+
     await tx.execute({
       sql: 'INSERT INTO game_sessions (user_id, score, played_at) VALUES (?, ?, ?)',
       args: [userId, score, nowSec],
     });
 
     await tx.commit();
+    return { pointsEarned, breakdown };
   } catch (error) {
     await tx.rollback();
     throw error;
   }
-}
-
-// 获取排行榜 Top N
-export async function getLeaderboard(limit: number = 10) {
-  const db = getDb();
-
-  const result = await db.execute({
-    sql: `
-      SELECT
-        u.id,
-        u.name,
-        u.email,
-        MAX(g.score) as high_score,
-        COUNT(*) as total_games
-      FROM game_sessions g
-      JOIN users u ON g.user_id = u.id
-      GROUP BY u.id
-      ORDER BY high_score DESC, total_games ASC, u.created_at ASC
-      LIMIT ?
-    `,
-    args: [limit],
-  });
-
-  return result.rows.map((row, index) => ({
-    rank: index + 1,
-    userId: row.id as string,
-    name: (row.name as string) || (row.email as string).split('@')[0],
-    highScore: row.high_score as number,
-    totalGames: row.total_games as number,
-  }));
 }
 
 // 获取用户历史最高分（无记录返回 0）
@@ -237,41 +282,7 @@ export async function getUserHighScore(userId: string): Promise<number> {
   return Number(result.rows[0]?.high_score) || 0;
 }
 
-/**
- * 获取用户在排行榜中的名次（并列时采用标准名次：比 ta 分数高的人数 + 1）。
- * 没有任何游戏记录时返回 null。
- */
-export async function getUserLeaderboardRank(
-  userId: string
-): Promise<number | null> {
-  const db = getDb();
-
-  const me = await db.execute({
-    sql: 'SELECT MAX(score) as high_score FROM game_sessions WHERE user_id = ?',
-    args: [userId],
-  });
-  const high = me.rows[0]?.high_score;
-  if (high === undefined || high === null) {
-    return null;
-  }
-
-  const result = await db.execute({
-    sql: `
-      SELECT COUNT(*) as cnt FROM (
-        SELECT u.id
-        FROM game_sessions g
-        JOIN users u ON g.user_id = u.id
-        GROUP BY u.id
-        HAVING MAX(g.score) > ?
-      )
-    `,
-    args: [high],
-  });
-
-  return Number(result.rows[0]?.cnt) + 1;
-}
-
-// 记录答题结果；3 题全部答对则获得一次游戏机会（credits + 1）
+// 记录答题结果；3 题全部答对则获得一次游戏机会（credits + 1），并奖励积分
 export async function recordQuizAttempt(
   userId: string,
   correctCount: number,
@@ -295,6 +306,34 @@ export async function recordQuizAttempt(
             DO UPDATE SET credits = credits + 1, updated_at = datetime('now')`,
       args: [userId, today],
     });
+
+    // 答题积分：每次全对 +5，每日上限 15（防止反复答题刷分）
+    const quizRow = await db.execute({
+      sql: 'SELECT quiz_points_date, quiz_points_today FROM user_points WHERE user_id = ?',
+      args: [userId],
+    });
+    const row = quizRow.rows[0];
+    const qDate = row?.quiz_points_date as string | null;
+    const qToday =
+      qDate === today ? Number(row?.quiz_points_today) || 0 : 0;
+
+    if (qToday < 15) {
+      const awarded = Math.min(5, 15 - qToday);
+      await db.execute({
+        sql: `INSERT INTO user_points (user_id, total_points, quiz_points_date, quiz_points_today)
+              VALUES (?, ?, ?, ?)
+              ON CONFLICT(user_id) DO UPDATE SET
+                total_points = total_points + excluded.total_points,
+                quiz_points_date = excluded.quiz_points_date,
+                quiz_points_today = excluded.quiz_points_today,
+                updated_at = datetime('now')`,
+        args: [userId, awarded, today, qToday + awarded],
+      });
+      await db.execute({
+        sql: 'INSERT INTO point_transactions (user_id, points, reason) VALUES (?, ?, ?)',
+        args: [userId, awarded, 'quiz_correct'],
+      });
+    }
   }
 
   return passed;

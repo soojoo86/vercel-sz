@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -12,6 +12,15 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  // null = 检查中；true = 开放；false = 已关闭
+  const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch('/api/settings/registration')
+      .then((res) => res.json())
+      .then((data) => setRegistrationOpen(data.enabled !== false))
+      .catch(() => setRegistrationOpen(true));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +49,37 @@ export default function RegisterPage() {
       setLoading(false);
     }
   };
+
+  if (registrationOpen === null) {
+    return (
+      <div className="max-w-md mx-auto mt-20 text-center">
+        <div className="animate-spin w-10 h-10 border-4 border-green-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+        <p className="text-gray-400">加载中...</p>
+      </div>
+    );
+  }
+
+  if (!registrationOpen) {
+    return (
+      <div className="max-w-md mx-auto mt-20">
+        <div className="bg-gray-800 rounded-lg p-8 shadow-xl text-center">
+          <h1 className="text-2xl font-bold mb-4 text-yellow-400">🚫 注册已关闭</h1>
+          <p className="text-gray-400">
+            当前注册通道已关闭，暂时无法注册新账号。
+          </p>
+          <p className="text-gray-500 text-sm mt-2">
+            如需开通账号，请联系管理员。
+          </p>
+          <Link
+            href="/login"
+            className="inline-block mt-6 bg-gray-700 hover:bg-gray-600 px-6 py-2 rounded font-medium transition"
+          >
+            返回登录
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-md mx-auto mt-20">

@@ -8,6 +8,7 @@ import {
   QUIZ_QUESTION_COUNT,
   MAX_GAME_SCORE,
 } from '@/lib/game';
+import { getUserPointsSummary } from '@/lib/points';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,12 +20,18 @@ export async function GET() {
     }
 
     const userId = session.user.id;
-    const access = await checkGameAccess(userId);
-    const highScore = await getUserHighScore(userId);
+    const [access, highScore, pointsSummary] = await Promise.all([
+      checkGameAccess(userId),
+      getUserHighScore(userId),
+      getUserPointsSummary(userId),
+    ]);
 
     return NextResponse.json({
       ...access,
       highScore,
+      totalPoints: pointsSummary.totalPoints,
+      streak: pointsSummary.streak,
+      rank: pointsSummary.rank,
       maxPlaysPerDay: MAX_PLAYS_PER_DAY,
       quizQuestionCount: QUIZ_QUESTION_COUNT,
       quizPassRequired: QUIZ_PASS_REQUIRED,

@@ -34,9 +34,10 @@ export async function POST(request: Request) {
 
     const previousHighScore = await getUserHighScore(userId);
 
+    let playResult;
     try {
-      // 校验 + 扣减次数 + 记录分数（事务原子执行）
-      await consumePlayAndRecordScore(userId, score);
+      // 校验 + 扣减次数 + 记录分数 + 结算积分（事务原子执行）
+      playResult = await consumePlayAndRecordScore(userId, score);
     } catch (err) {
       const code = err instanceof Error ? err.message : '';
       if (code === 'DAILY_LIMIT_REACHED') {
@@ -62,6 +63,8 @@ export async function POST(request: Request) {
       score,
       highScore: Math.max(previousHighScore, score),
       isNewHigh,
+      pointsEarned: playResult.pointsEarned,
+      pointsBreakdown: playResult.breakdown,
     });
   } catch (error) {
     console.error('提交分数错误:', error);

@@ -37,9 +37,55 @@ export default function AdminPage() {
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // 注册开关
+  const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+
   const flash = (type: 'ok' | 'error', text: string) => {
     setMessage({ type, text });
     window.setTimeout(() => setMessage(null), 3000);
+  };
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/settings');
+      if (res.status === 401) {
+        setAuthed(false);
+        return;
+      }
+      const data = await res.json();
+      if (res.ok) {
+        setRegistrationEnabled(!!data.registrationEnabled);
+      }
+    } catch {
+      // 忽略，保持 null 不渲染开关
+    }
+  }, []);
+
+  const toggleRegistration = async () => {
+    if (registrationEnabled === null || settingsSaving) return;
+    setSettingsSaving(true);
+    try {
+      const next = !registrationEnabled;
+      const res = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ registrationEnabled: next }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRegistrationEnabled(next);
+        flash('ok', data.message || '设置已更新');
+      } else if (res.status === 401) {
+        setAuthed(false);
+      } else {
+        flash('error', data.error || '设置失败');
+      }
+    } catch {
+      flash('error', '网络错误，请重试');
+    } finally {
+      setSettingsSaving(false);
+    }
   };
 
   const loadQuestions = useCallback(async () => {
@@ -53,6 +99,7 @@ export default function AdminPage() {
       if (res.ok) {
         setQuestions(data.questions ?? []);
         setAuthed(true);
+        loadSettings();
       } else {
         flash('error', data.error || '获取题目失败');
       }
@@ -246,6 +293,41 @@ export default function AdminPage() {
           {message.text}
         </div>
       )}
+
+      {/* 系统设置：注册开关 */}
+      <div className="bg-gray-800 rounded-lg p-5 mb-6 flex justify-between items-center gap-4 flex-wrap">
+        <div>
+          <h2 className="font-bold">⚙️ 系统设置</h2>
+          <p className="text-sm text-gray-400 mt-1">
+            新用户注册通道：
+            {registrationEnabled === null ? (
+              <span className="text-gray-500">加载中...</span>
+            ) : registrationEnabled ? (
+              <span className="text-green-400 font-bold">已开启</span>
+            ) : (
+              <span className="text-red-400 font-bold">已关闭</span>
+            )}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            关闭后新用户将无法注册（已有账号登录不受影响）
+          </p>
+        </div>
+        <button
+          onClick={toggleRegistration}
+          disabled={registrationEnabled === null || settingsSaving}
+          className={`px-5 py-2 rounded text-sm font-medium transition disabled:bg-gray-600 disabled:cursor-not-allowed ${
+            registrationEnabled
+              ? 'bg-red-600/80 hover:bg-red-600'
+              : 'bg-green-600 hover:bg-green-700'
+          }`}
+        >
+          {settingsSaving
+            ? '切换中...'
+            : registrationEnabled
+            ? '关闭注册'
+            : '开启注册'}
+        </button>
+      </div>
 
       {/* 新增/编辑表单 */}
       {showForm ? (

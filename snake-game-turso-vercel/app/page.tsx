@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import SnakeGame from '@/components/SnakeGame';
 import QuizModal from '@/components/QuizModal';
 
@@ -13,6 +14,9 @@ interface GameStatus {
   remainingPlays: number;
   credits: number;
   highScore: number;
+  totalPoints?: number;
+  streak?: number;
+  rank?: number | null;
   maxPlaysPerDay?: number;
   quizPassRequired?: number;
   quizQuestionCount?: number;
@@ -69,9 +73,14 @@ export default function Home() {
         });
         const data = await res.json();
         if (res.ok) {
+          const breakdownText = (data.pointsBreakdown || [])
+            .map((item: { label: string; points: number }) => `${item.label} +${item.points}`)
+            .join('，');
           showTemporaryMessage(
             'ok',
-            `游戏结束！得分 ${score}${data.isNewHigh ? '，🏆 刷新了历史纪录！' : ' 已记录'}`
+            `游戏结束！得分 ${score}，获得积分 +${data.pointsEarned ?? 0}${
+              breakdownText ? `（${breakdownText}）` : ''
+            }${data.isNewHigh ? ' 🏆 刷新了历史纪录！' : ''}`
           );
           fetchGameStatus();
         } else {
@@ -143,7 +152,7 @@ export default function Home() {
       )}
 
       {/* 状态卡片 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <div className="bg-gray-800 rounded-lg p-4 text-center">
           <p className="text-gray-400 text-sm">今日已玩</p>
           <p className="text-3xl font-bold text-green-400 mt-1">
@@ -163,6 +172,16 @@ export default function Home() {
               {limitReached ? '今日已用完' : (gameStatus?.playCount ?? 0) === 0 ? '首次免费' : '需答题获取'}
             </p>
           )}
+        </div>
+        <div className="bg-gradient-to-br from-yellow-600/20 to-orange-600/20 border border-yellow-500/40 rounded-lg p-4 text-center">
+          <p className="text-gray-400 text-sm">累计积分</p>
+          <p className="text-3xl font-bold text-yellow-400 mt-1">
+            {gameStatus?.totalPoints ?? 0}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            排名第 {gameStatus?.rank ?? '-'} 名
+            {(gameStatus?.streak ?? 0) > 0 && ` · 🔥 连续 ${gameStatus?.streak} 天`}
+          </p>
         </div>
         <div className="bg-gray-800 rounded-lg p-4 text-center">
           <p className="text-gray-400 text-sm">历史最高分</p>
@@ -235,7 +254,33 @@ export default function Home() {
             速度随分数提升逐步加快；空格 / P 键可暂停
           </li>
           <li>• 撞墙或撞到自己游戏结束，吃满整张棋盘可通关</li>
-          <li>• 排行榜按最高分排名，快去挑战吧！</li>
+        </ul>
+
+        <h3 className="font-bold text-lg mt-6 mb-3">💰 积分规则</h3>
+        <ul className="space-y-2 text-gray-300 text-sm">
+          <li>
+            • <span className="text-yellow-400 font-bold">每局得分 = 积分</span>，
+            玩得越好赚得越多
+          </li>
+          <li>
+            • <span className="text-yellow-400 font-bold">每日首局 +10</span>，
+            天天都有基础奖励
+          </li>
+          <li>
+            • <span className="text-yellow-400 font-bold">连续游玩加成</span>：
+            连续第 N 天额外 +5×N（最高 +50/天），中断则重新计算——坚持就是优势！
+          </li>
+          <li>
+            • <span className="text-yellow-400 font-bold">刷新纪录 +50</span>，
+            <span className="text-yellow-400 font-bold"> 通关 +200</span>
+            （吃满 3990 分）
+          </li>
+          <li>
+            • 答题全部答对 <span className="text-yellow-400 font-bold">+5</span>（每日上限 15）
+          </li>
+          <li className="text-yellow-300">
+            🎁 积分排行榜 Top 10 将获得线下物质奖励，<Link href="/leaderboard" className="underline">前往排行榜</Link> 查看当前战况
+          </li>
         </ul>
       </div>
 

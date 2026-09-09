@@ -35,6 +35,40 @@ async function createSchema(): Promise<void> {
     )
   `);
 
+  // 积分总账表（累计积分、连续游玩天数、当日答题积分）
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS user_points (
+      user_id TEXT PRIMARY KEY,
+      total_points INTEGER NOT NULL DEFAULT 0,
+      streak INTEGER NOT NULL DEFAULT 0,
+      last_play_date TEXT,
+      quiz_points_date TEXT,
+      quiz_points_today INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  // 积分流水表（每一笔积分的来源明细）
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS point_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      points INTEGER NOT NULL,
+      reason TEXT NOT NULL,
+      detail TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  // 应用设置表（注册开关等）
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
   await db.execute(`
     CREATE INDEX IF NOT EXISTS idx_quiz_questions_created
     ON quiz_questions(created_at)
