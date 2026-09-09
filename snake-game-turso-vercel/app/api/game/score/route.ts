@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import {
   checkGameAccess,
-  recordGameScore,
+  consumePlayAndRecordScore,
   getUserHighScore,
   MAX_GAME_SCORE,
 } from '@/lib/game';
@@ -32,17 +32,28 @@ export async function POST(request: Request) {
     const { score } = validated.data;
     const userId = session.user.id;
 
-    // 再次验证权限（防止前端绕过）
-    const access = await checkGameAccess(userId);
-    if (!access.allowed) {
-      return NextResponse.json(
-        { error: '今日游戏次数已用完，请先答题解锁' },
-        { status: 403 }
-      );
+    const previousHighScore = await getUserHighScore(userId);
+
+    try {
+      // 校验 + 扣减次数 + 记录分数（事务原子执行）
+      await consumePlayAndRecordScore(userId, score);
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (code === 'DAILY_LIMIT_REACHED') {
+        return NextResponse.json(
+          { error: '今日游戏次数已用完（每天最多 5 次），明天再来吧' },
+          { status: 403 }
+        );
+      }
+      if (code === 'QUIZ_REQUIRED') {
+        return NextResponse.json(
+          { error: '本次游戏机会已用完，请先答题获取新的机会' },
+          { status: 403 }
+        );
+      }
+      throw err;
     }
 
-    const previousHighScore = await getUserHighScore(userId);
-    await recordGameScore(userId, score);
     const isNewHigh = score > previousHighScore;
 
     return NextResponse.json({

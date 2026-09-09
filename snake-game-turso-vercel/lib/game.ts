@@ -1,14 +1,19 @@
 import { getDb } from './db';
+import { ensureSchema } from './db/schema';
 
 export interface GameAccessResult {
   allowed: boolean;
   reason: 'free_play' | 'quiz_required' | 'limit_reached' | 'unlocked';
   playCount: number;
-  remainingFreePlays: number;
+  remainingPlays: number;
+  credits: number; // 当前可用的答题机会数
 }
 
-export const FREE_PLAYS_PER_DAY = 4;
-export const QUIZ_PASS_REQUIRED = 3;
+// 每天最多可玩次数
+export const MAX_PLAYS_PER_DAY = 5;
+// 每次答题的题目数，全部答对才获得一次游戏机会
+export const QUIZ_QUESTION_COUNT = 3;
+export const QUIZ_PASS_REQUIRED = QUIZ_QUESTION_COUNT;
 
 // 服务端校验用：20x20 棋盘，最多可吃 399 个食物（每格 10 分），留少量余量防止网络重放
 export const MAX_GAME_SCORE = 4000;
@@ -65,87 +70,129 @@ export async function getTodayPlayCount(userId: string): Promise<number> {
   const db = getDb();
   const { start, end } = getTodayWindowSec();
 
-  // played_at 兼容两种存储：datetime 文本 或 unix 秒（strftime('%s', x) 均可解析）
+  // played_at 兼容两种存储：unix 秒（数字）或 datetime 文本（strftime 解析）
   const result = await db.execute({
     sql: `SELECT COUNT(*) as count FROM game_sessions
-          WHERE user_id = ? AND CAST(strftime('%s', played_at) AS INTEGER) >= ?
-            AND CAST(strftime('%s', played_at) AS INTEGER) < ?`,
+          WHERE user_id = ?
+            AND CAST(CASE typeof(played_at)
+                  WHEN 'text' THEN strftime('%s', played_at)
+                  ELSE played_at END AS INTEGER) >= ?
+            AND CAST(CASE typeof(played_at)
+                  WHEN 'text' THEN strftime('%s', played_at)
+                  ELSE played_at END AS INTEGER) < ?`,
     args: [userId, start, end],
   });
 
   return Number(result.rows[0]?.count) || 0;
 }
 
-// 检查用户今日是否已通过答题解锁
-export async function hasUnlockedToday(userId: string): Promise<boolean> {
+// 获取用户今日剩余答题机会（credits）
+export async function getTodayCredits(userId: string): Promise<number> {
   const db = getDb();
   const today = getTodayDateString();
 
   const result = await db.execute({
-    sql: `SELECT id FROM daily_unlocks
-          WHERE user_id = ? AND unlock_date = ?`,
+    sql: 'SELECT credits FROM daily_credits WHERE user_id = ? AND credit_date = ?',
     args: [userId, today],
   });
 
-  return result.rows.length > 0;
+  return Number(result.rows[0]?.credits) || 0;
 }
 
 // 检查游戏访问权限
 export async function checkGameAccess(userId: string): Promise<GameAccessResult> {
   const playCount = await getTodayPlayCount(userId);
-  const unlocked = await hasUnlockedToday(userId);
 
-  // 前4次免费玩
-  if (playCount < FREE_PLAYS_PER_DAY) {
+  // 今日次数已用完（每天最多 5 次）
+  if (playCount >= MAX_PLAYS_PER_DAY) {
+    return {
+      allowed: false,
+      reason: 'limit_reached',
+      playCount,
+      remainingPlays: 0,
+      credits: 0,
+    };
+  }
+
+  // 每天第一次免费玩
+  if (playCount === 0) {
     return {
       allowed: true,
       reason: 'free_play',
       playCount,
-      remainingFreePlays: FREE_PLAYS_PER_DAY - playCount,
+      remainingPlays: MAX_PLAYS_PER_DAY - playCount,
+      credits: 0,
     };
   }
 
-  // 已通过答题解锁：当日不再限制
-  if (unlocked) {
+  // 第 2~5 次：需要消耗一次答题机会
+  const credits = await getTodayCredits(userId);
+  if (credits > 0) {
     return {
       allowed: true,
       reason: 'unlocked',
       playCount,
-      remainingFreePlays: 0,
+      remainingPlays: MAX_PLAYS_PER_DAY - playCount,
+      credits,
     };
   }
 
-  // 第5次起需要先答题解锁
-  if (playCount === FREE_PLAYS_PER_DAY) {
-    return {
-      allowed: false,
-      reason: 'quiz_required',
-      playCount,
-      remainingFreePlays: 0,
-    };
-  }
-
-  // 兜底分支：超过免费次数且未解锁
   return {
     allowed: false,
-    reason: 'limit_reached',
+    reason: 'quiz_required',
     playCount,
-    remainingFreePlays: 0,
+    remainingPlays: MAX_PLAYS_PER_DAY - playCount,
+    credits: 0,
   };
 }
 
-// 记录游戏分数
-export async function recordGameScore(
+/**
+ * 记录游戏分数并消耗次数：
+ * - 每天第一次免费；后续每次消耗一个答题机会（credits - 1）
+ * - 通过事务保证"校验 + 扣减 + 记录"的原子性
+ */
+export async function consumePlayAndRecordScore(
   userId: string,
   score: number
 ): Promise<void> {
+  await ensureSchema();
   const db = getDb();
+  const today = getTodayDateString();
   const nowSec = Math.floor(Date.now() / 1000);
 
-  await db.execute({
-    sql: 'INSERT INTO game_sessions (user_id, score, played_at) VALUES (?, ?, ?)',
-    args: [userId, score, nowSec],
-  });
+  const tx = await db.transaction();
+
+  try {
+    const playCount = await getTodayPlayCount(userId);
+
+    if (playCount >= MAX_PLAYS_PER_DAY) {
+      throw new Error('DAILY_LIMIT_REACHED');
+    }
+
+    if (playCount > 0) {
+      // 非首次游玩，需要消耗一个答题机会
+      const creditResult = await tx.execute({
+        sql: `UPDATE daily_credits
+              SET credits = credits - 1, updated_at = datetime('now')
+              WHERE user_id = ? AND credit_date = ? AND credits > 0`,
+        args: [userId, today],
+      });
+
+      if (creditResult.rowsAffected === 0) {
+        throw new Error('QUIZ_REQUIRED');
+      }
+    }
+
+    await tx.execute({
+      sql: 'INSERT INTO game_sessions (user_id, score, played_at) VALUES (?, ?, ?)',
+      args: [userId, score, nowSec],
+    });
+
+    await tx.commit();
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  }
 }
 
 // 获取排行榜 Top N
@@ -224,12 +271,13 @@ export async function getUserLeaderboardRank(
   return Number(result.rows[0]?.cnt) + 1;
 }
 
-// 记录答题结果并解锁
+// 记录答题结果；3 题全部答对则获得一次游戏机会（credits + 1）
 export async function recordQuizAttempt(
   userId: string,
   correctCount: number,
   totalCount: number
 ): Promise<boolean> {
+  await ensureSchema();
   const db = getDb();
   const passed = correctCount >= QUIZ_PASS_REQUIRED;
 
@@ -240,9 +288,11 @@ export async function recordQuizAttempt(
 
   if (passed) {
     const today = getTodayDateString();
-    // 使用 INSERT OR IGNORE 防止重复记录
     await db.execute({
-      sql: 'INSERT OR IGNORE INTO daily_unlocks (user_id, unlock_date) VALUES (?, ?)',
+      sql: `INSERT INTO daily_credits (user_id, credit_date, credits)
+            VALUES (?, ?, 1)
+            ON CONFLICT(user_id, credit_date)
+            DO UPDATE SET credits = credits + 1, updated_at = datetime('now')`,
       args: [userId, today],
     });
   }

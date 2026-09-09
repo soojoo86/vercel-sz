@@ -109,10 +109,10 @@ export default function QuizModal({ isOpen, onClose, onPass }: QuizModalProps) {
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-bold text-green-400 mb-4 text-center">
-          📝 答题解锁游戏
+          📝 信息安全答题
         </h2>
         <p className="text-gray-400 text-center mb-6 text-sm">
-          今日免费次数已用完，答对3题即可解锁今日额外游戏机会
+          共 3 题，<span className="text-yellow-400 font-bold">全部答对</span>才能获得 1 次游戏机会
         </p>
 
         {loading && (
@@ -137,7 +137,7 @@ export default function QuizModal({ isOpen, onClose, onPass }: QuizModalProps) {
             </p>
             <p>答对 {result.correct}/{result.total} 题</p>
             {result.passed ? (
-              <p className="text-sm mt-2">正在解锁游戏...</p>
+              <p className="text-sm mt-2">已获得 1 次游戏机会，正在进入游戏...</p>
             ) : (
               <button
                 onClick={retry}

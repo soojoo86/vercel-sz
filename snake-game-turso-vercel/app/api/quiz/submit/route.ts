@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { quizQuestions, checkAnswers } from '@/lib/quiz';
-import { recordQuizAttempt } from '@/lib/game';
+import { findQuestionById, checkAnswers, type QuizQuestion } from '@/lib/quiz';
+import { recordQuizAttempt, QUIZ_QUESTION_COUNT } from '@/lib/game';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+
 const submitSchema = z.object({
-  answers: z.array(z.number()).length(5),
-  questionIds: z.array(z.number()).length(5),
+  answers: z.array(z.number()).length(QUIZ_QUESTION_COUNT),
+  questionIds: z.array(z.string()).length(QUIZ_QUESTION_COUNT),
 });
 
 export async function POST(request: Request) {
@@ -27,15 +29,19 @@ export async function POST(request: Request) {
     const userId = session.user.id;
 
     // 根据ID获取完整题目（含正确答案）
-    const questions = questionIds.map(id => 
-      quizQuestions.find(q => q.id === id)
-    ).filter(Boolean);
-
-    if (questions.length !== 5) {
-      return NextResponse.json({ error: '题目数据错误' }, { status: 400 });
+    const questions: QuizQuestion[] = [];
+    for (const id of questionIds) {
+      const q = await findQuestionById(id);
+      if (!q) {
+        return NextResponse.json(
+          { error: '题目数据错误，请刷新重试' },
+          { status: 400 }
+        );
+      }
+      questions.push(q);
     }
 
-    const result = checkAnswers(questions as any, answers);
+    const result = checkAnswers(questions, answers);
     const passed = await recordQuizAttempt(userId, result.correct, result.total);
 
     return NextResponse.json({
@@ -43,7 +49,9 @@ export async function POST(request: Request) {
       correct: result.correct,
       total: result.total,
       results: result.results,
-      message: passed ? '恭喜！答题通过，已解锁今日游戏' : '答题未通过，答对3题及以上才能解锁',
+      message: passed
+        ? '恭喜！3 题全部答对，获得 1 次游戏机会'
+        : `未通过：答对 ${result.correct}/${result.total} 题，需全部答对才能获得游戏机会`,
     });
   } catch (error) {
     console.error('提交答案错误:', error);

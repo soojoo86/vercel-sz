@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getRandomQuestions } from '@/lib/quiz';
+import { QUIZ_QUESTION_COUNT } from '@/lib/game';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,15 +12,18 @@ export async function GET() {
       return NextResponse.json({ error: '请先登录' }, { status: 401 });
     }
 
-    const questions = getRandomQuestions(5);
+    const questions = await getRandomQuestions(QUIZ_QUESTION_COUNT);
     // 不返回正确答案给前端
-    const safeQuestions = questions.map(q => ({
+    const safeQuestions = questions.map((q) => ({
       id: q.id,
       question: q.question,
       options: q.options,
     }));
 
-    return NextResponse.json({ questions: safeQuestions });
+    return NextResponse.json({
+      questions: safeQuestions,
+      totalCount: QUIZ_QUESTION_COUNT,
+    });
   } catch (error) {
     console.error('获取题目错误:', error);
     return NextResponse.json(

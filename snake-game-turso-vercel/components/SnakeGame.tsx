@@ -438,18 +438,18 @@ export default function SnakeGame({
               unlockHint ? (
                 <>
                   <p className="text-yellow-300 font-medium px-6 text-center">
-                    今日免费次数已用完
+                    本次机会已用完，答题可获取新机会
                   </p>
                   <button
                     onClick={onUnlockRequest}
                     className="bg-yellow-600 hover:bg-yellow-500 px-6 py-2.5 rounded-lg font-medium transition"
                   >
-                    📝 答题解锁再玩一局
+                    📝 答题获取游戏机会
                   </button>
                 </>
               ) : (
                 <p className="text-gray-300 font-medium px-6 text-center">
-                  今日次数已用完
+                  今日 5 次游戏次数已用完
                 </p>
               )
             ) : (
@@ -505,7 +505,7 @@ export default function SnakeGame({
                   onClick={onUnlockRequest}
                   className="bg-yellow-600 hover:bg-yellow-500 px-6 py-2 rounded-lg font-medium transition"
                 >
-                  📝 答题解锁
+                  📝 答题获取机会
                 </button>
               )}
             </div>

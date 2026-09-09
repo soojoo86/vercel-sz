@@ -10,10 +10,12 @@ interface GameStatus {
   allowed: boolean;
   reason: string;
   playCount: number;
-  remainingFreePlays: number;
+  remainingPlays: number;
+  credits: number;
   highScore: number;
-  freePlaysPerDay?: number;
+  maxPlaysPerDay?: number;
   quizPassRequired?: number;
+  quizQuestionCount?: number;
   user?: { name?: string; email: string };
 }
 
@@ -88,7 +90,7 @@ export default function Home() {
   );
 
   const handleQuizPass = useCallback(() => {
-    showTemporaryMessage('ok', '🎉 答题通过！已解锁今日游戏');
+    showTemporaryMessage('ok', '🎉 答题通过！获得 1 次游戏机会');
     fetchGameStatus();
   }, [fetchGameStatus, showTemporaryMessage]);
 
@@ -105,7 +107,8 @@ export default function Home() {
     return null;
   }
 
-  const freeTotal = gameStatus?.freePlaysPerDay ?? 4;
+  const maxPlays = gameStatus?.maxPlaysPerDay ?? 5;
+  const quizCount = gameStatus?.quizQuestionCount ?? 3;
   const unlocked = gameStatus?.reason === 'unlocked';
   const quizRequired = gameStatus?.reason === 'quiz_required';
   const limitReached = gameStatus?.reason === 'limit_reached';
@@ -144,19 +147,20 @@ export default function Home() {
         <div className="bg-gray-800 rounded-lg p-4 text-center">
           <p className="text-gray-400 text-sm">今日已玩</p>
           <p className="text-3xl font-bold text-green-400 mt-1">
-            {gameStatus?.playCount ?? 0} <span className="text-lg text-gray-500">次</span>
+            {gameStatus?.playCount ?? 0}
+            <span className="text-lg text-gray-500"> / {maxPlays} 次</span>
           </p>
         </div>
         <div className="bg-gray-800 rounded-lg p-4 text-center">
-          <p className="text-gray-400 text-sm">
-            {unlocked ? '解锁状态' : '剩余免费次数'}
-          </p>
+          <p className="text-gray-400 text-sm">可用游戏机会</p>
           {unlocked ? (
-            <p className="text-2xl font-bold text-green-400 mt-2">✅ 已解锁畅玩</p>
+            <p className="text-3xl font-bold text-green-400 mt-1">
+              {gameStatus?.credits ?? 0}
+              <span className="text-lg text-gray-500"> 次（答题解锁）</span>
+            </p>
           ) : (
-            <p className="text-3xl font-bold text-yellow-400 mt-1">
-              {gameStatus?.remainingFreePlays ?? 0}
-              <span className="text-lg text-gray-500"> / {freeTotal}</span>
+            <p className="text-2xl font-bold text-yellow-400 mt-2">
+              {limitReached ? '今日已用完' : (gameStatus?.playCount ?? 0) === 0 ? '首次免费' : '需答题获取'}
             </p>
           )}
         </div>
@@ -177,7 +181,7 @@ export default function Home() {
               onClick={() => setShowQuiz(true)}
               className="bg-yellow-600 hover:bg-yellow-500 px-4 py-2 rounded text-sm font-medium transition"
             >
-              答题解锁
+              📝 答题获取游戏机会
             </button>
           )}
           {limitReached && (
@@ -212,13 +216,13 @@ export default function Home() {
         <h3 className="font-bold text-lg mb-3">📋 游戏规则</h3>
         <ul className="space-y-2 text-gray-300 text-sm">
           <li>
-            • 每天前 <span className="text-green-400 font-bold">{freeTotal}次</span>{' '}
-            免费游玩，无需任何限制
+            • 每天最多可玩 <span className="text-green-400 font-bold">{maxPlays} 次</span>，
+            其中<span className="text-green-400 font-bold">第 1 次免费</span>
           </li>
           <li>
-            • 第 {freeTotal + 1} 次游玩前需要完成{' '}
-            <span className="text-yellow-400 font-bold">5道贪吃蛇知识题</span>，
-            答对 {gameStatus?.quizPassRequired ?? 3} 题即可解锁当日无限畅玩
+            • 第 2 次起，每次游玩前需完成{' '}
+            <span className="text-yellow-400 font-bold">{quizCount} 道信息安全题目</span>，
+            <span className="text-yellow-400 font-bold">全部答对</span>才能获得 1 次游戏机会
           </li>
           <li>
             • 使用{' '}

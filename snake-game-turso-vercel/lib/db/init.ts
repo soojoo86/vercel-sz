@@ -57,6 +57,33 @@ async function initDb() {
   `);
   console.log('✓ daily_unlocks 表创建成功');
 
+  // admin 自定义题目表
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS quiz_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      question TEXT NOT NULL,
+      option_a TEXT NOT NULL,
+      option_b TEXT NOT NULL,
+      option_c TEXT NOT NULL,
+      option_d TEXT NOT NULL,
+      correct_index INTEGER NOT NULL CHECK (correct_index BETWEEN 0 AND 3),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  console.log('✓ quiz_questions 表创建成功');
+
+  // 每日答题机会额度表（答对一次 +1，玩一局非免费局 -1）
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS daily_credits (
+      user_id TEXT NOT NULL,
+      credit_date TEXT NOT NULL,
+      credits INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, credit_date)
+    )
+  `);
+  console.log('✓ daily_credits 表创建成功');
+
   // 常用查询索引
   await db.execute(`
     CREATE INDEX IF NOT EXISTS idx_game_sessions_user_date

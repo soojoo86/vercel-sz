@@ -3,8 +3,9 @@ import { auth } from '@/lib/auth';
 import {
   checkGameAccess,
   getUserHighScore,
-  FREE_PLAYS_PER_DAY,
+  MAX_PLAYS_PER_DAY,
   QUIZ_PASS_REQUIRED,
+  QUIZ_QUESTION_COUNT,
   MAX_GAME_SCORE,
 } from '@/lib/game';
 
@@ -24,7 +25,8 @@ export async function GET() {
     return NextResponse.json({
       ...access,
       highScore,
-      freePlaysPerDay: FREE_PLAYS_PER_DAY,
+      maxPlaysPerDay: MAX_PLAYS_PER_DAY,
+      quizQuestionCount: QUIZ_QUESTION_COUNT,
       quizPassRequired: QUIZ_PASS_REQUIRED,
       maxGameScore: MAX_GAME_SCORE,
       user: {

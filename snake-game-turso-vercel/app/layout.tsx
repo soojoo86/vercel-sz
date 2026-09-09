@@ -22,6 +22,7 @@ export default function RootLayout({
               <div className="flex gap-4">
                 <a href="/" className="hover:text-green-400 transition">游戏</a>
                 <a href="/leaderboard" className="hover:text-green-400 transition">排行榜</a>
+                <a href="/admin" className="hover:text-green-400 transition">题库管理</a>
               </div>
             </div>
           </nav>
