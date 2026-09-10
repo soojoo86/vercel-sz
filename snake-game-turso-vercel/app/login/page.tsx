@@ -12,7 +12,7 @@ const errorMessages: Record<string, string> = {
   OAuthCreateAccount: '钉钉账号关联失败，请联系管理员',
   AccessDenied: '当前未开放注册，暂不接受新用户登录',
   CallbackRouteError: '钉钉登录失败，请重试或联系管理员',
-  Configuration: '服务端配置有误，钉钉登录未能完成',
+  Configuration: '钉钉登录回调处理失败（服务端内部错误）',
 };
 
 // 这些错误通常是配置 / 服务端原因，引导管理员去看诊断面板

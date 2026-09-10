@@ -1,6 +1,6 @@
 // console.log("AUTH_SECRET:", process.env.AUTH_SECRET);
 
-import NextAuth from 'next-auth';
+import NextAuth, { customFetch } from 'next-auth';
 import type { OAuth2Config } from 'next-auth/providers';
 import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
@@ -9,6 +9,13 @@ import { getDb } from './db';
 import { ensureSchema } from './db/schema';
 import { isRegistrationEnabled } from './settings';
 import { recordAuthFailure } from './auth-log';
+import {
+  createDingtalkFetch,
+  describeAuthError,
+  DINGTALK_TOKEN_ENDPOINT,
+  DINGTALK_USERINFO_ENDPOINT,
+  readBody,
+} from './dingtalk';
 import { z } from 'zod';
 
 const loginSchema = z.object({
@@ -38,15 +45,7 @@ interface DingtalkProfile {
   email?: string;
 }
 
-/** 读取响应体文本（钉钉报错时可能返回非 JSON），截断避免日志过长 */
-async function readBody(res: Response): Promise<string> {
-  try {
-    const text = await res.text();
-    return text.slice(0, 500);
-  } catch {
-    return '<无法读取响应体>';
-  }
-}
+// 钉钉 OAuth2 协议适配（换 token 报文改写、错误描述）统一放在 ./dingtalk.ts
 
 const dingtalkProvider: OAuth2Config<DingtalkProfile> = {
   id: 'dingtalk',
@@ -54,12 +53,11 @@ const dingtalkProvider: OAuth2Config<DingtalkProfile> = {
   type: 'oauth',
   clientId: dingtalkClientId,
   clientSecret: dingtalkClientSecret,
-  // ⚠️ 关键：关闭 PKCE，只保留 state 校验。
-  // NextAuth 默认对 OAuth 启用 PKCE（授权时下发 code_challenge，
-  // 换 token 时要求回传 code_verifier），但钉钉的 userAccessToken 接口
-  // body 仅支持 clientId / clientSecret / code / refreshToken / grantType，
-  // 不接受 code_verifier，导致换 token 必然失败（invalid_grant），
-  // 最终表现为「There is a problem with the server configuration」。
+  // ⚠️ 关闭 PKCE，只保留 state 校验。
+  // Auth.js 默认对 OAuth 启用 PKCE（授权时下发 code_challenge，换 token 时
+  // 要求回传 code_verifier），但钉钉的 userAccessToken 接口只接受
+  // clientId / clientSecret / code / refreshToken / grantType，不接受
+  // code_verifier，因此必须关掉，否则换 token 一定失败。
   checks: ['state'],
   authorization: {
     url: 'https://login.dingtalk.com/oauth2/auth',
@@ -70,76 +68,19 @@ const dingtalkProvider: OAuth2Config<DingtalkProfile> = {
     },
   },
   token: {
-    url: 'https://api.dingtalk.com/v1.0/oauth2/userAccessToken',
-    // 钉钉 token 接口要求 JSON body（非标准 OAuth form 编码），需自定义请求
-    async request({
-      params,
-      provider,
-    }: {
-      params: { code?: string };
-      provider: { clientId?: string; clientSecret?: string };
-    }) {
-      const url = 'https://api.dingtalk.com/v1.0/oauth2/userAccessToken';
-      const payload = {
-        clientId: provider.clientId as string,
-        clientSecret: provider.clientSecret as string,
-        code: params.code as string,
-        grantType: 'authorization_code',
-      };
-
-      let res: Response;
-      try {
-        res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        await recordAuthFailure('token_exchange', `请求钉钉 token 接口网络异常: ${detail}`);
-        throw error;
-      }
-
-      if (!res.ok) {
-        const body = await readBody(res);
-        await recordAuthFailure(
-          'token_exchange',
-          `钉钉返回 HTTP ${res.status}：${body}`,
-          { status: res.status, body }
-        );
-        throw new Error(`钉钉获取用户授权失败: HTTP ${res.status} ${body}`);
-      }
-
-      const data = (await res.json()) as {
-        accessToken?: string;
-        refreshToken?: string;
-        code?: string;
-        message?: string;
-      };
-
-      if (!data.accessToken) {
-        const body = JSON.stringify(data);
-        await recordAuthFailure(
-          'token_exchange',
-          `钉钉未返回 accessToken：${body}`,
-          { body }
-        );
-        throw new Error(`钉钉获取用户授权失败: ${body}`);
-      }
-
-      return {
-        tokens: {
-          access_token: data.accessToken,
-          refresh_token: data.refreshToken,
-        },
-      };
-    },
+    url: DINGTALK_TOKEN_ENDPOINT,
   },
+  // 钉钉换 token 的报文与标准 OAuth2 不兼容，在 fetch 层改写（详见 lib/dingtalk.ts）
+  [customFetch]: createDingtalkFetch({
+    clientId: dingtalkClientId,
+    clientSecret: dingtalkClientSecret,
+    onError: recordAuthFailure,
+  }),
   userinfo: {
-    url: 'https://api.dingtalk.com/v1.0/contact/users/me',
+    url: DINGTALK_USERINFO_ENDPOINT,
     // 钉钉用户信息接口要求专用 header（非标准 Bearer），需自定义请求
     async request({ tokens }: { tokens: { access_token?: string } }) {
-      const url = 'https://api.dingtalk.com/v1.0/contact/users/me';
+      const url = DINGTALK_USERINFO_ENDPOINT;
 
       let res: Response;
       try {
@@ -259,6 +200,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   logger: {
     error(error) {
       console.error('[nextauth][error]', error);
+      // Auth.js 会把「非白名单」的内部错误统一掩码成 error=Configuration 再重定向，
+      // 前端只能看到「服务端配置有误」这种通用文案。这里把真实错误（含 cause 链）
+      // 落库，以便在 /admin 的「钉钉登录诊断」里看到确切原因。
+      void recordAuthFailure('unexpected', describeAuthError(error));
     },
     warn(code) {
       console.warn('[nextauth][warn]', code);

@@ -25,7 +25,7 @@ const STAGE_LABEL: Record<AuthStage, string> = {
   profile: '钉钉用户信息不完整（缺 unionId）',
   db_upsert: '写入用户表失败',
   registration_disabled: '注册通道已关闭',
-  unexpected: '未预期异常',
+  unexpected: '登录回调异常（NextAuth 内部错误）',
 };
 
 export function stageLabel(stage: string): string {

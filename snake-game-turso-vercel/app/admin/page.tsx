@@ -453,8 +453,11 @@ export default function AdminPage() {
 
               {diag.logs.length === 0 ? (
                 <p className="text-gray-500 text-xs">
-                  暂无失败记录。若刚失败过仍为空，说明错误发生在 NextAuth 更靠前的阶段，
-                  可在 Vercel 环境变量加 AUTH_DEBUG=true 后重新部署查看日志。
+                  暂无失败记录。钉钉登录失败时页面只会显示{' '}
+                  <code className="bg-gray-700 px-1 rounded">error=Configuration</code>
+                  ——Auth.js 会把内部错误统一掩码，真实原因会记录在这里。
+                  若此处仍为空，可在 Vercel 环境变量加 AUTH_DEBUG=true 后重新部署，
+                  再到 Vercel Functions 日志里看 <code className="bg-gray-700 px-1 rounded">[nextauth][error]</code> 开头的报错。
                 </p>
               ) : (
                 <div className="space-y-2">
