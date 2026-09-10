@@ -10,6 +10,20 @@ let schemaPromise: Promise<void> | null = null;
 async function createSchema(): Promise<void> {
   const db = getDb();
 
+  // 用户表（钉钉登录用户也会写入此表）
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      name TEXT,
+      password_hash TEXT NOT NULL,
+      dingtalk_union_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  await ensureUsersColumns();
+
   // admin 自定义题目表
   await db.execute(`
     CREATE TABLE IF NOT EXISTS quiz_questions (
@@ -75,6 +89,27 @@ async function createSchema(): Promise<void> {
   `);
 
   await ensureQuizAttemptsColumns();
+}
+
+/**
+ * 老的 users 表可能缺 dingtalk_union_id 列（钉钉扫码登录需要），
+ * 此处检测并补列 + 唯一索引。
+ */
+async function ensureUsersColumns(): Promise<void> {
+  const db = getDb();
+
+  const result = await db.execute('PRAGMA table_info(users)');
+  const columns = new Set(result.rows.map((r) => String(r.name)));
+
+  if (!columns.has('dingtalk_union_id')) {
+    await db.execute('ALTER TABLE users ADD COLUMN dingtalk_union_id TEXT');
+    console.log('users 表已补充 dingtalk_union_id 列');
+  }
+
+  await db.execute(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_dingtalk_union_id
+    ON users(dingtalk_union_id)
+  `);
 }
 
 /**

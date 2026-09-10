@@ -5,15 +5,16 @@
 ## ✨ 功能特性
 
 1. **邮箱注册登录** - 使用邮箱和密码注册登录，密码安全哈希存储
-2. **贪吃蛇游戏** - 经典贪吃蛇玩法，Canvas 绘制，方向键/WASD 控制
-3. **每日次数限制** - 每天最多可玩 **5 次**，第 1 次免费（按 `Asia/Shanghai` 时区重置）
-4. **答题获取机会** - 第 2~5 次：每次需答 **3 道信息安全题**，**全部答对**获得 1 次游戏机会
-5. **题库管理后台** - 访问 `/admin`（默认密码 `admin112233sz`，可用 `ADMIN_PASSWORD` 覆盖）自定义增删改题目
-6. **积分排行榜** - 按**累计积分**排名，展示全部注册玩家名单，Top 10 为奖励区
-7. **积分体系** - 得分即积分，叠加每日首局、连续游玩、破纪录、通关、答题等多重奖励
-8. **注册开关** - 管理后台可随时开启/关闭新用户注册通道
-9. **Turso 数据库** - 使用边缘 SQLite 数据库，全球低延迟
-10. **Vercel 部署** - 一键部署到 Vercel Serverless 平台
+2. **钉钉扫码登录（可选）** - 配置 `DINGTALK_CLIENT_ID/SECRET` 后玩家可直接用钉钉账号登录
+3. **贪吃蛇游戏** - 经典贪吃蛇玩法，Canvas 绘制，方向键/WASD 控制
+4. **每日次数限制** - 每天最多可玩 **5 次**，第 1 次免费（按 `Asia/Shanghai` 时区重置）
+5. **答题获取机会** - 第 2~5 次：每次需答 **3 道信息安全题**，**全部答对**获得 1 次游戏机会
+6. **题库管理后台** - 访问 `/admin`（默认密码 `admin112233sz`，可用 `ADMIN_PASSWORD` 覆盖）自定义增删改题目
+7. **积分排行榜** - 按**累计积分**排名，展示全部注册玩家名单，Top 10 为奖励区
+8. **积分体系** - 得分即积分，叠加每日首局、连续游玩、破纪录、通关、答题等多重奖励
+9. **注册开关** - 管理后台可随时开启/关闭新用户注册通道
+10. **Turso 数据库** - 使用边缘 SQLite 数据库，全球低延迟
+11. **Vercel 部署** - 一键部署到 Vercel Serverless 平台
 
 ### 🎮 游戏体验细节
 
@@ -65,6 +66,10 @@ AUTH_URL=http://localhost:3000   # 本地开发地址
 
 # 可选：每日次数重置时区（默认 Asia/Shanghai）
 GAME_TIMEZONE=Asia/Shanghai
+
+# 可选：钉钉扫码登录（见下文「钉钉登录接入」）
+# DINGTALK_CLIENT_ID=钉钉应用 AppKey
+# DINGTALK_CLIENT_SECRET=钉钉应用 AppSecret
 ```
 
 > 说明：项目使用 NextAuth v5 的 `AUTH_SECRET` 命名；若从 v4 迁移且只配置过
@@ -93,8 +98,38 @@ npm run dev
    - `TURSO_DATABASE_URL`
    - `TURSO_AUTH_TOKEN`
    - `AUTH_SECRET`
+   - （可选）`DINGTALK_CLIENT_ID` / `DINGTALK_CLIENT_SECRET` —— 启用钉钉扫码登录
    - （`AUTH_URL` 无需填写，Vercel 会自动注入生产域名）
 4. 点击 "Deploy"
+
+## 🤖 钉钉登录接入（可选）
+
+玩家可用钉钉账号扫码登录玩游戏，无需再注册邮箱账号。
+
+### 配置步骤
+
+1. 打开钉钉开放平台 <https://open-dev.dingtalk.com>，用管理员钉钉扫码登录
+2. 「应用开发」→ 创建**企业内部应用**（应用名如"信息安全贪吃蛇"）
+3. 在应用左侧「安全设置」→ **重定向 URL** 中添加回调地址：
+   - 本地开发：`http://localhost:3000/api/auth/callback/dingtalk`
+   - 生产环境：`https://<你的域名>/api/auth/callback/dingtalk`
+4. 在「凭证与基础信息」页复制 **AppKey / AppSecret**
+5. 配置到环境变量（本地 `.env.local` 或 Vercel）：
+   ```env
+   DINGTALK_CLIENT_ID=你的AppKey
+   DINGTALK_CLIENT_SECRET=你的AppSecret
+   ```
+6. 重启 / 重新部署后，登录页会自动出现「钉钉扫码登录」按钮
+
+### 机制说明
+
+- **首次扫码**自动创建账号（写入 `users` 表，绑定 `dingtalk_union_id`），
+  昵称取钉钉昵称，使用随机占位密码，无法撞库登录
+- **注册开关联动**：admin 关闭注册后，新钉钉用户无法首次登录，
+  已绑定的老用户不受影响
+- 钉钉扫码登录要求**玩家本人在你的钉钉组织内**（企业内部应用限制），
+  如需组织外玩家参与，需申请发布为「第三方个人应用」或改用网页应用的扫码登录组件
+
 
 ### Vercel 部署注意事项
 

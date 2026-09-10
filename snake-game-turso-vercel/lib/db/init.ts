@@ -6,17 +6,24 @@ async function initDb() {
   
   console.log('正在初始化数据库...');
 
-  // 创建用户表
+  // 创建用户表（含钉钉登录关联列）
   await db.execute(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
       name TEXT,
       password_hash TEXT NOT NULL,
+      dingtalk_union_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
   console.log('✓ users 表创建成功');
+
+  // 钉钉 union_id 唯一索引（SQLite 唯一索引允许多个 NULL，不影响邮箱用户）
+  await db.execute(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_dingtalk_union_id
+    ON users(dingtalk_union_id)
+  `);
 
   // 创建游戏记录表
   await db.execute(`
