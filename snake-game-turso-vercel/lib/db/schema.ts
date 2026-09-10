@@ -83,6 +83,17 @@ async function createSchema(): Promise<void> {
     )
   `);
 
+  // 登录失败诊断日志（钉钉 OAuth 各阶段异常，便于在 /admin 自助排查）
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS auth_failure_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      stage TEXT NOT NULL,
+      detail TEXT NOT NULL,
+      meta TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
   await db.execute(`
     CREATE INDEX IF NOT EXISTS idx_quiz_questions_created
     ON quiz_questions(created_at)

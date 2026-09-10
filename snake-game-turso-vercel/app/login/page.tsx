@@ -8,12 +8,15 @@ import Link from 'next/link';
 // 钉钉登录回调失败时，NextAuth 会带 error 参数重定向回登录页
 const errorMessages: Record<string, string> = {
   OAuthSignin: '钉钉登录发起失败，请稍后重试',
-  OAuthCallback: '钉钉登录回调失败，请重试',
+  OAuthCallback: '钉钉登录回调处理失败，请重试或联系管理员',
   OAuthCreateAccount: '钉钉账号关联失败，请联系管理员',
   AccessDenied: '当前未开放注册，暂不接受新用户登录',
   CallbackRouteError: '钉钉登录失败，请重试或联系管理员',
-  Configuration: '服务端配置有误（请检查钉钉登录配置）',
+  Configuration: '服务端配置有误，钉钉登录未能完成',
 };
+
+// 这些错误通常是配置 / 服务端原因，引导管理员去看诊断面板
+const CONFIG_ERRORS = ['Configuration', 'OAuthCallback', 'CallbackRouteError'];
 
 function LoginForm() {
   const router = useRouter();
@@ -82,7 +85,21 @@ function LoginForm() {
 
         {error && (
           <div className="bg-red-500/20 border border-red-500 text-red-300 p-3 rounded mb-4">
-            {error}
+            <p>{error}</p>
+            {urlError && CONFIG_ERRORS.includes(urlError) && (
+              <p className="text-xs text-red-200/80 mt-2">
+                管理员可访问{' '}
+                <Link href="/admin" className="underline hover:text-white">
+                  /admin
+                </Link>{' '}
+                的「钉钉登录诊断」查看具体失败原因
+                {urlError && (
+                  <span className="block mt-1 font-mono text-[10px] opacity-70">
+                    error={urlError}
+                  </span>
+                )}
+              </p>
+            )}
           </div>
         )}
 

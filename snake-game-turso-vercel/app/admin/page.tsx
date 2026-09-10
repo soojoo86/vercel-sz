@@ -18,6 +18,25 @@ interface FormState {
   correctAnswer: number;
 }
 
+interface AuthFailureLog {
+  id: number;
+  stage: string;
+  stageLabel: string;
+  detail: string;
+  meta: string | null;
+  createdAt: string;
+}
+
+interface DingtalkDiag {
+  dingtalkLoginEnabled: boolean;
+  dingtalkCallbackUrl: string;
+  dingtalkCallbackHost: string;
+  authUrl: string | null;
+  authSecretConfigured: boolean;
+  debugEnabled: boolean;
+  logs: AuthFailureLog[];
+}
+
 const emptyForm: FormState = {
   id: null,
   question: '',
@@ -40,6 +59,10 @@ export default function AdminPage() {
   // 注册开关
   const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
+
+  // 钉钉登录诊断
+  const [diag, setDiag] = useState<DingtalkDiag | null>(null);
+  const [diagOpen, setDiagOpen] = useState(false);
 
   const flash = (type: 'ok' | 'error', text: string) => {
     setMessage({ type, text });
@@ -88,6 +111,40 @@ export default function AdminPage() {
     }
   };
 
+  const loadDiag = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/auth-logs');
+      if (res.status === 401) {
+        setAuthed(false);
+        return;
+      }
+      const data = await res.json();
+      if (res.ok) {
+        setDiag(data as DingtalkDiag);
+      }
+    } catch {
+      // 诊断信息获取失败不影响主流程
+    }
+  }, []);
+
+  const clearDiagLogs = async () => {
+    if (!window.confirm('确定清空全部登录失败日志吗？')) return;
+    try {
+      const res = await fetch('/api/admin/auth-logs', { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) {
+        flash('ok', data.message || '已清空');
+        loadDiag();
+      } else if (res.status === 401) {
+        setAuthed(false);
+      } else {
+        flash('error', data.error || '清空失败');
+      }
+    } catch {
+      flash('error', '网络错误，请重试');
+    }
+  };
+
   const loadQuestions = useCallback(async () => {
     try {
       const res = await fetch('/api/admin/questions');
@@ -100,6 +157,7 @@ export default function AdminPage() {
         setQuestions(data.questions ?? []);
         setAuthed(true);
         loadSettings();
+        loadDiag();
       } else {
         flash('error', data.error || '获取题目失败');
       }
@@ -328,6 +386,111 @@ export default function AdminPage() {
             : '开启注册'}
         </button>
       </div>
+
+      {/* 钉钉登录诊断 */}
+      {diag && (
+        <div className="bg-gray-800 rounded-lg p-5 mb-6">
+          <div className="flex justify-between items-center gap-3 flex-wrap">
+            <div>
+              <h2 className="font-bold">
+                🔍 钉钉登录诊断
+                {diag.logs.length > 0 && (
+                  <span className="ml-2 text-xs bg-red-500/20 border border-red-500 text-red-300 px-2 py-0.5 rounded">
+                    {diag.logs.length} 条失败记录
+                  </span>
+                )}
+              </h2>
+              <p className="text-sm text-gray-400 mt-1">
+                钉钉登录：
+                {diag.dingtalkLoginEnabled ? (
+                  <span className="text-green-400 font-bold">已启用</span>
+                ) : (
+                  <span className="text-yellow-400 font-bold">
+                    未启用（缺少 DINGTALK_CLIENT_ID / SECRET 环境变量）
+                  </span>
+                )}
+              </p>
+            </div>
+            <button
+              onClick={() => setDiagOpen((v) => !v)}
+              className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded text-sm transition"
+            >
+              {diagOpen ? '收起详情' : '展开详情'}
+            </button>
+          </div>
+
+          {diagOpen && (
+            <div className="mt-4 space-y-3 text-sm">
+              <div className="bg-gray-900/60 rounded p-3 space-y-1">
+                <p className="text-gray-400 text-xs">当前实际回调地址（需与钉钉后台匹配）</p>
+                <p className="font-mono text-xs break-all text-green-300">
+                  {diag.dingtalkCallbackUrl}
+                </p>
+                <p className="text-gray-400 text-xs mt-2">
+                  钉钉「应用开发 → 登录与分享 → 回调域名」应填（纯域名，不带协议与路径）：
+                </p>
+                <p className="font-mono text-xs break-all text-yellow-300">
+                  {diag.dingtalkCallbackHost}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-gray-900/60 rounded p-2">
+                  AUTH_SECRET：
+                  {diag.authSecretConfigured ? (
+                    <span className="text-green-400">已配置</span>
+                  ) : (
+                    <span className="text-red-400">缺失（会导致登录失败）</span>
+                  )}
+                </div>
+                <div className="bg-gray-900/60 rounded p-2">
+                  AUTH_URL：
+                  <span className={diag.authUrl ? 'text-green-400' : 'text-gray-400'}>
+                    {diag.authUrl || '未设置（按请求域名推断）'}
+                  </span>
+                </div>
+              </div>
+
+              {diag.logs.length === 0 ? (
+                <p className="text-gray-500 text-xs">
+                  暂无失败记录。若刚失败过仍为空，说明错误发生在 NextAuth 更靠前的阶段，
+                  可在 Vercel 环境变量加 AUTH_DEBUG=true 后重新部署查看日志。
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <p className="text-gray-400 text-xs">最近失败记录</p>
+                    <button
+                      onClick={clearDiagLogs}
+                      className="text-xs text-gray-400 hover:text-red-400 transition"
+                    >
+                      清空日志
+                    </button>
+                  </div>
+                  {diag.logs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="bg-gray-900/60 rounded p-3 border-l-2 border-red-500"
+                    >
+                      <div className="flex justify-between gap-2 text-xs">
+                        <span className="text-red-300 font-medium">
+                          {log.stageLabel}
+                        </span>
+                        <span className="text-gray-500 shrink-0">
+                          {log.createdAt}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-300 mt-1 break-all">
+                        {log.detail}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 新增/编辑表单 */}
       {showForm ? (

@@ -1,13 +1,14 @@
 // console.log("AUTH_SECRET:", process.env.AUTH_SECRET);
 
 import NextAuth from 'next-auth';
-import type { OAuth2Config, Provider } from 'next-auth/providers';
+import type { OAuth2Config } from 'next-auth/providers';
 import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { getDb } from './db';
 import { ensureSchema } from './db/schema';
 import { isRegistrationEnabled } from './settings';
+import { recordAuthFailure } from './auth-log';
 import { z } from 'zod';
 
 const loginSchema = z.object({
@@ -37,12 +38,29 @@ interface DingtalkProfile {
   email?: string;
 }
 
+/** 读取响应体文本（钉钉报错时可能返回非 JSON），截断避免日志过长 */
+async function readBody(res: Response): Promise<string> {
+  try {
+    const text = await res.text();
+    return text.slice(0, 500);
+  } catch {
+    return '<无法读取响应体>';
+  }
+}
+
 const dingtalkProvider: OAuth2Config<DingtalkProfile> = {
   id: 'dingtalk',
   name: '钉钉',
   type: 'oauth',
   clientId: dingtalkClientId,
   clientSecret: dingtalkClientSecret,
+  // ⚠️ 关键：关闭 PKCE，只保留 state 校验。
+  // NextAuth 默认对 OAuth 启用 PKCE（授权时下发 code_challenge，
+  // 换 token 时要求回传 code_verifier），但钉钉的 userAccessToken 接口
+  // body 仅支持 clientId / clientSecret / code / refreshToken / grantType，
+  // 不接受 code_verifier，导致换 token 必然失败（invalid_grant），
+  // 最终表现为「There is a problem with the server configuration」。
+  checks: ['state'],
   authorization: {
     url: 'https://login.dingtalk.com/oauth2/auth',
     params: {
@@ -61,28 +79,54 @@ const dingtalkProvider: OAuth2Config<DingtalkProfile> = {
       params: { code?: string };
       provider: { clientId?: string; clientSecret?: string };
     }) {
-      const res = await fetch(
-        'https://api.dingtalk.com/v1.0/oauth2/userAccessToken',
-        {
+      const url = 'https://api.dingtalk.com/v1.0/oauth2/userAccessToken';
+      const payload = {
+        clientId: provider.clientId as string,
+        clientSecret: provider.clientSecret as string,
+        code: params.code as string,
+        grantType: 'authorization_code',
+      };
+
+      let res: Response;
+      try {
+        res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clientId: provider.clientId as string,
-            clientSecret: provider.clientSecret as string,
-            code: params.code as string,
-            grantType: 'authorization_code',
-          }),
-        }
-      );
+          body: JSON.stringify(payload),
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        await recordAuthFailure('token_exchange', `请求钉钉 token 接口网络异常: ${detail}`);
+        throw error;
+      }
+
+      if (!res.ok) {
+        const body = await readBody(res);
+        await recordAuthFailure(
+          'token_exchange',
+          `钉钉返回 HTTP ${res.status}：${body}`,
+          { status: res.status, body }
+        );
+        throw new Error(`钉钉获取用户授权失败: HTTP ${res.status} ${body}`);
+      }
+
       const data = (await res.json()) as {
         accessToken?: string;
         refreshToken?: string;
+        code?: string;
+        message?: string;
       };
-      if (!res.ok || !data.accessToken) {
-        throw new Error(
-          `钉钉获取用户授权失败: ${JSON.stringify(data)}`
+
+      if (!data.accessToken) {
+        const body = JSON.stringify(data);
+        await recordAuthFailure(
+          'token_exchange',
+          `钉钉未返回 accessToken：${body}`,
+          { body }
         );
+        throw new Error(`钉钉获取用户授权失败: ${body}`);
       }
+
       return {
         tokens: {
           access_token: data.accessToken,
@@ -95,15 +139,41 @@ const dingtalkProvider: OAuth2Config<DingtalkProfile> = {
     url: 'https://api.dingtalk.com/v1.0/contact/users/me',
     // 钉钉用户信息接口要求专用 header（非标准 Bearer），需自定义请求
     async request({ tokens }: { tokens: { access_token?: string } }) {
-      const res = await fetch('https://api.dingtalk.com/v1.0/contact/users/me', {
-        headers: {
-          'x-acs-dingtalk-access-token': String(tokens.access_token),
-        },
-      });
-      if (!res.ok) {
-        throw new Error(`钉钉获取用户信息失败: HTTP ${res.status}`);
+      const url = 'https://api.dingtalk.com/v1.0/contact/users/me';
+
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          headers: {
+            'x-acs-dingtalk-access-token': String(tokens.access_token),
+          },
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        await recordAuthFailure('userinfo', `请求钉钉用户信息接口网络异常: ${detail}`);
+        throw error;
       }
-      return (await res.json()) as DingtalkProfile;
+
+      if (!res.ok) {
+        const body = await readBody(res);
+        await recordAuthFailure(
+          'userinfo',
+          `钉钉用户信息接口返回 HTTP ${res.status}：${body}`,
+          { status: res.status, body }
+        );
+        throw new Error(`钉钉获取用户信息失败: HTTP ${res.status} ${body}`);
+      }
+
+      const profile = (await res.json()) as DingtalkProfile;
+      if (!profile.unionId) {
+        await recordAuthFailure(
+          'profile',
+          `钉钉用户信息缺少 unionId：${JSON.stringify(profile).slice(0, 300)}`
+        );
+        throw new Error('钉钉用户信息缺少 unionId');
+      }
+
+      return profile;
     },
   },
   profile(profile) {
@@ -158,6 +228,10 @@ async function upsertDingtalkUser(profile: DingtalkProfile): Promise<{
 
   // 新用户视为注册行为，尊重注册开关
   if (!(await isRegistrationEnabled())) {
+    await recordAuthFailure(
+      'registration_disabled',
+      `注册通道已关闭，拒绝新钉钉用户首登（unionId=${profile.unionId}）`
+    );
     throw new Error('REGISTRATION_DISABLED');
   }
 
@@ -180,6 +254,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: authSecret,
   // Serverless / Vercel 场景下信任部署平台提供的 Host
   trustHost: true,
+  // AUTH_DEBUG=true 时输出 NextAuth 全量调试日志（排查 OAuth 问题用）
+  debug: process.env.AUTH_DEBUG === 'true',
+  logger: {
+    error(error) {
+      console.error('[nextauth][error]', error);
+    },
+    warn(code) {
+      console.warn('[nextauth][warn]', code);
+    },
+    debug(code, metadata) {
+      console.log('[nextauth][debug]', code, metadata);
+    },
+  },
   providers: [
     Credentials({
       credentials: {
@@ -232,6 +319,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: 'jwt' },
   pages: {
     signIn: '/login',
+    // 登录失败统一回到登录页，页面上会展示可读的中文原因
+    error: '/login',
   },
   callbacks: {
     async jwt({ token, user, account, profile }) {
@@ -239,18 +328,30 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // 钉钉登录：落库（绑定或新建），把内部用户 id 写入 token
         const dingtalkProfile = profile as DingtalkProfile | undefined;
         if (!dingtalkProfile?.unionId) {
+          await recordAuthFailure('profile', 'jwt 回调未拿到 unionId');
           throw new Error('DINGTALK_PROFILE_MISSING');
         }
-        const dbUser = await upsertDingtalkUser({
-          unionId: dingtalkProfile.unionId,
-          openId: dingtalkProfile.openId,
-          nick: dingtalkProfile.nick,
-          avatarUrl: dingtalkProfile.avatarUrl,
-          email: dingtalkProfile.email,
-        });
-        token.id = dbUser.id;
-        token.email = dbUser.email;
-        token.name = dbUser.name;
+        try {
+          const dbUser = await upsertDingtalkUser({
+            unionId: dingtalkProfile.unionId,
+            openId: dingtalkProfile.openId,
+            nick: dingtalkProfile.nick,
+            avatarUrl: dingtalkProfile.avatarUrl,
+            email: dingtalkProfile.email,
+          });
+          token.id = dbUser.id;
+          token.email = dbUser.email;
+          token.name = dbUser.name;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          // 注册关闭是业务预期，不重复记录
+          if (message !== 'REGISTRATION_DISABLED') {
+            await recordAuthFailure('db_upsert', message, {
+              unionId: dingtalkProfile.unionId,
+            });
+          }
+          throw error;
+        }
       } else if (user) {
         token.id = user.id;
         token.email = user.email;

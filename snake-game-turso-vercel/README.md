@@ -136,6 +136,23 @@ npm run dev
 - 钉钉扫码登录要求**玩家本人在你的钉钉组织内**（企业内部应用限制），
   如需组织外玩家参与，需申请发布为「第三方个人应用」或改用网页应用的扫码登录组件
 
+### 常见问题排查
+
+钉钉登录报错时，登录页会显示中文提示；**管理员访问 `/admin` 的「🔍 钉钉登录诊断」区块**，
+可以一站式看到：实际回调地址、应填写的回调域名、环境变量是否齐全，
+以及最近 20 条登录失败的**具体原因**（换取 token 失败 / 用户信息接口报错 / 落库异常）。
+
+| 现象 | 原因与处理 |
+|---|---|
+| 钉钉授权页提示 `redirect_uri参数错误` | 钉钉后台「登录与分享 → 回调域名」未配置或填错。必须填**纯域名**（`your-app.vercel.app`），不能带 `https://` 和路径 |
+| 扫码后回到站点提示 `Server error / There is a problem with the server configuration` | 这是 NextAuth 的通用兜底文案，真实原因已写入诊断面板。常见：`AUTH_SECRET` 缺失、token 交换失败、`contact/users/me` 权限不足 |
+| 提示「当前未开放注册」 | admin 后台关闭了注册通道，新钉钉用户无法首登；已绑定老用户不受影响 |
+| 想看到最详细的日志 | Vercel 环境变量加 `AUTH_DEBUG=true` 后重新部署，Functions 日志会输出 OAuth 全流程 |
+
+> 实现说明：NextAuth 默认对 OAuth 启用 PKCE（授权时下发 `code_challenge`），
+> 但钉钉 `userAccessToken` 接口不接受 `code_verifier` 参数，会导致换 token 必然失败。
+> 因此本项目在钉钉 Provider 上显式设置 `checks: ['state']`，仅保留 state 校验。
+
 
 ### Vercel 部署注意事项
 
