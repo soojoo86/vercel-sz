@@ -30,6 +30,7 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [registrationOpen, setRegistrationOpen] = useState(true);
   const [dingtalkEnabled, setDingtalkEnabled] = useState(false);
+  const [dingtalkCallbackHost, setDingtalkCallbackHost] = useState('');
   const [dingtalkLoading, setDingtalkLoading] = useState(false);
 
   useEffect(() => {
@@ -38,6 +39,7 @@ function LoginForm() {
       .then((data) => {
         setRegistrationOpen(data.enabled !== false);
         setDingtalkEnabled(data.dingtalkLoginEnabled === true);
+        setDingtalkCallbackHost(data.dingtalkCallbackHost || '');
       })
       .catch(() => setRegistrationOpen(true));
   }, []);
@@ -142,6 +144,13 @@ function LoginForm() {
               首次使用钉钉登录将自动创建账号
               {!registrationOpen && '（当前未开放新用户注册，老用户可正常登录）'}
             </p>
+            {dingtalkCallbackHost && (
+              <p className="text-center mt-1 text-gray-600 text-xs">
+                回调域名：<code className="bg-gray-700 px-1 rounded">{dingtalkCallbackHost}</code>
+                <br />
+                请在钉钉开放平台「应用开发 → 登录与分享」配置此域名
+              </p>
+            )}
           </>
         )}
 

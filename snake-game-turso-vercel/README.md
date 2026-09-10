@@ -110,16 +110,22 @@ npm run dev
 
 1. 打开钉钉开放平台 <https://open-dev.dingtalk.com>，用管理员钉钉扫码登录
 2. 「应用开发」→ 创建**企业内部应用**（应用名如"信息安全贪吃蛇"）
-3. 在应用左侧「安全设置」→ **重定向 URL** 中添加回调地址：
-   - 本地开发：`http://localhost:3000/api/auth/callback/dingtalk`
-   - 生产环境：`https://<你的域名>/api/auth/callback/dingtalk`
-4. 在「凭证与基础信息」页复制 **AppKey / AppSecret**
-5. 配置到环境变量（本地 `.env.local` 或 Vercel）：
+3. 在应用左侧「应用开发」→ **登录与分享** → **回调域名** 中配置：
+   - ⚠️ 这里填的是**纯域名**（不带 `https://`、不带路径），例如：
+     - 本地开发：`localhost:3000`
+     - 生产环境：`your-app.vercel.app`（**不要**写 `https://your-app.vercel.app/api/auth/callback/dingtalk`）
+   - 配置后钉钉会用这个域名做前缀校验：
+     - ✅ `https://your-app.vercel.app/api/auth/callback/dingtalk` —— 与 `your-app.vercel.app` 匹配
+     - ❌ `https://www.your-app.vercel.app/...` —— `www` 子域名不匹配，需单独配
+4. （可选）在「安全设置」→「重定向URL」再补一遍完整回调地址作为兜底：
+   - `https://<你的域名>/api/auth/callback/dingtalk`
+5. 在「凭证与基础信息」页复制 **AppKey / AppSecret**
+6. 配置到环境变量（本地 `.env.local` 或 Vercel）：
    ```env
    DINGTALK_CLIENT_ID=你的AppKey
    DINGTALK_CLIENT_SECRET=你的AppSecret
    ```
-6. 重启 / 重新部署后，登录页会自动出现「钉钉扫码登录」按钮
+7. 重启 / 重新部署后，登录页会自动出现「钉钉扫码登录」按钮
 
 ### 机制说明
 
